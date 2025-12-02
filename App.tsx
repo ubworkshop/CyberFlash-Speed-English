@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Flame } from 'lucide-react';
 import { WORDS } from './data';
 import { AppSettings, InputStatus } from './types';
 import { speak, stopSpeech } from './utils/speech';
@@ -12,6 +13,10 @@ const App: React.FC = () => {
   const [inputValue, setInputValue] = useState('');
   const [inputStatus, setInputStatus] = useState<InputStatus>('neutral');
   const [settings, setSettings] = useState<AppSettings>({ rate: 1.0, accent: 'US' });
+  
+  // Streak State
+  const [streak, setStreak] = useState(0);
+  const [wordStreakEarned, setWordStreakEarned] = useState(false);
 
   const currentWordData = WORDS[currentIndex];
 
@@ -39,6 +44,7 @@ const App: React.FC = () => {
     setIsFlipped(false);
     setInputValue('');
     setInputStatus('neutral');
+    setWordStreakEarned(false);
     setCurrentIndex((prev) => (prev + 1) % WORDS.length);
   };
 
@@ -55,20 +61,32 @@ const App: React.FC = () => {
     const input = val.toLowerCase();
 
     if (input === target) {
-      setInputStatus('correct');
-      // Reward Audio
-      speak("Correct! " + currentWordData.word, settings);
-      
-      // Auto flip to show context reward
-      if (!isFlipped) {
-        setIsFlipped(true);
+      if (inputStatus !== 'correct') {
+        // Increment streak only if not already earned for this word
+        if (!wordStreakEarned) {
+          setStreak(prev => prev + 1);
+          setWordStreakEarned(true);
+        }
+
+        setInputStatus('correct');
+        // Reward Audio
+        speak("Correct! " + currentWordData.word, settings);
+        
+        // Auto flip to show context reward
+        if (!isFlipped) {
+          setIsFlipped(true);
+        }
       }
     } else if (target.startsWith(input)) {
       setInputStatus('neutral');
     } else {
+      // Reset streak on error, but don't reset wordStreakEarned (can't re-earn it)
+      if (inputStatus !== 'error') {
+        setStreak(0);
+        // Optional: Vibrate device if supported
+        if (navigator.vibrate) navigator.vibrate(200);
+      }
       setInputStatus('error');
-      // Optional: Vibrate device if supported
-      if (navigator.vibrate) navigator.vibrate(200);
     }
   };
 
@@ -85,10 +103,20 @@ const App: React.FC = () => {
 
       <div className="w-full max-w-3xl flex flex-col items-center z-10 pt-16">
         
-        {/* Progress Indicator */}
-        <div className="w-full max-w-md flex justify-between text-xs font-mono text-slate-500 mb-4 px-1">
-          <span>UNIT: {currentWordData.id.toString().padStart(2, '0')}</span>
-          <span>TOTAL: {WORDS.length.toString().padStart(2, '0')}</span>
+        {/* Stats Bar */}
+        <div className="w-full max-w-md flex justify-between items-end mb-4 px-2">
+          <div className="text-xs font-mono text-slate-500 flex flex-col gap-1">
+            <div className="tracking-widest">UNIT_ID: {currentWordData.id.toString().padStart(3, '0')}</div>
+            <div className="opacity-50">TOTAL: {WORDS.length.toString().padStart(2, '0')}</div>
+          </div>
+          
+          <div className={`flex items-center gap-2 font-mono transition-all duration-300 ${streak > 0 ? 'text-orange-500' : 'text-slate-700'}`}>
+            <span className="text-[10px] font-bold tracking-widest opacity-80">STREAK_COUNT</span>
+            <div className="flex items-center">
+              <Flame size={20} className={`transition-all duration-500 ${streak > 0 ? 'fill-orange-500 animate-pulse drop-shadow-[0_0_8px_rgba(249,115,22,0.6)]' : 'fill-slate-800'}`} />
+              <span className={`text-2xl font-black ml-1 ${streak > 0 ? 'neon-text-orange' : ''}`}>{streak.toString().padStart(2, '0')}</span>
+            </div>
+          </div>
         </div>
 
         {/* 3D Card */}
@@ -96,6 +124,7 @@ const App: React.FC = () => {
           data={currentWordData} 
           isFlipped={isFlipped} 
           onFlip={handleFlip} 
+          isSuccess={inputStatus === 'correct'}
         />
 
         {/* Input Field */}
